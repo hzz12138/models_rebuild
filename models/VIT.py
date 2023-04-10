@@ -9,7 +9,53 @@ import torch
 import torch.nn as nn
 from einops import rearrange
 
+class PatchEmbedding(nn.Module):
+    def __init__(self, image_size=224, in_channels=3, patch_size=16):
+        super(PatchEmbedding, self).__init__()
+        self.in_channels = in_channels
+        self.image_size = image_size
+        self.len_patches = image_size//patch_size
+        self.patch_size = patch_size
+        self.emded_dims = self.patch_size ** 2 * self.in_channels
+        # 方法1，使用卷积
+        self.conv1 = nn.Conv2d(in_channels=in_channels,
+                               out_channels=self.emded_dims,
+                               kernel_size=patch_size,
+                               padding=0,
+                               stride=patch_size)
 
+        # 学习class token
+        self.cls_token = nn.Parameter(torch.zeros(1, self.emded_dims))
+        # 学习pos token
+        self.pos_token = nn.Parameter(torch.zeros(1, self.len_patches ** 2 + 1, self.emded_dims))
+
+    def forward(self,x):
+        # 方法1
+        x = self.conv1(x)
+        x = torch.flatten(x,start_dim=2)
+        x = torch.transpose(x, 1, 2)
+
+        # 方法2，使用rearrange
+        # x = rearrange(tensor=x,
+        #               pattern='B C (P1 L1) (P2 L2) -> B (L1 L2) (P1 P2 C)',
+        #               C=self.in_channels,
+        #               P1=self.patch_size,
+        #               P2=self.patch_size,
+        #               L1=self.len_patches,
+        #               L2=self.len_patches)
+
+        # 类别编码
+        cls_token = self.cls_token.expand(x.shape[0], -1, -1)
+        x = torch.cat([cls_token,x], dim=1)
+        # 位置编码
+        pos_token = self.pos_token
+        x = x + pos_token
+
+        return x
+
+
+
+# 建立多头注意力机制
 class MultiHeadAttn(nn.Module):
     def __init__(self, patch_dims, num_heads, dropout_ratio=0.1):
         super(MultiHeadAttn, self).__init__()
@@ -36,6 +82,7 @@ class MultiHeadAttn(nn.Module):
         return x
 
 
+# 全连接层
 class MLP(nn.Module):
     def __init__(self, patch_dims, hidden_dims=None, dropout_ratio=0.1):
         super(MLP, self).__init__()
@@ -55,14 +102,14 @@ class MLP(nn.Module):
         return x
 
 
-
-class VIT_Encoder(nn.Module):
-    def __init__(self, patch_dims):
-        super(VIT_Encoder, self).__init__()
+# Transformer_Encoder
+class TransformerEncoder(nn.Module):
+    def __init__(self, patch_dims=768, num_heads=16, dropout_ratio=0.1):
+        super(TransformerEncoder, self).__init__()
         self.ln1 = nn.LayerNorm(normalized_shape=patch_dims)
-        self.multi_head_attn = MultiHeadAttn(patch_dims, num_heads=16)
+        self.multi_head_attn = MultiHeadAttn(patch_dims=patch_dims, num_heads=num_heads, dropout_ratio=dropout_ratio)
         self.ln2 = nn.LayerNorm(normalized_shape=patch_dims)
-        self.mlp = MLP(patch_dims=patch_dims)
+        self.mlp = MLP(patch_dims=patch_dims, hidden_dims=patch_dims*4, dropout_ratio=dropout_ratio)
 
     def forward(self, x):
         residual = x
@@ -75,10 +122,44 @@ class VIT_Encoder(nn.Module):
         x = residual + x
         return x
 
+# MLP_head
+class MLPHead(nn.Module):
+    def __init__(self, embed_dims, num_classes):
+        super(MLPHead, self).__init__()
+        self.ln1 = nn.LayerNorm(normalized_shape=embed_dims)
+        self.mlphead = nn.Linear(in_features=embed_dims, out_features=num_classes)
+
+    def forward(self, x):
+        x = self.ln1(x)
+        cls = x[:, 0, :]
+        x = self.mlphead(cls)
+        return x
+
+
+
+
+
 
 if __name__ == '__main__':
-    model = VIT_Encoder(patch_dims=1024)
-    input_tensor = torch.randn(size=(1, 65, 1024))  # (batch_size, num_patches, patch_dims)
-    output_tensor = model(input_tensor)
+    input_tensor = torch.randn(size=(10, 3, 224, 224))
+    model1 = PatchEmbedding(
+        image_size=224,
+        in_channels=3,
+        patch_size=16
+    )
+    output_tensor = model1(input_tensor)
+    print(output_tensor.shape) # (batch_size, num_patches, patch_dims)
 
+    model2 = TransformerEncoder(
+        patch_dims=768,
+        num_heads=16
+    )
+    output_tensor = model2(output_tensor)
+    print(output_tensor.shape)
+
+    model3 = MLPHead(
+        embed_dims=768,
+        num_classes=1024
+    )
+    output_tensor = model3(output_tensor)
     print(output_tensor.shape)
