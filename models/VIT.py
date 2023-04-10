@@ -11,7 +11,7 @@ from einops import rearrange
 
 
 class MultiHeadAttn(nn.Module):
-    def __init__(self, patch_dims, num_heads, dropout_ratio):
+    def __init__(self, patch_dims, num_heads, dropout_ratio=0.1):
         super(MultiHeadAttn, self).__init__()
         self.num_heads = num_heads
         self.head_dims = patch_dims // num_heads
@@ -36,22 +36,43 @@ class MultiHeadAttn(nn.Module):
         return x
 
 
+class MLP(nn.Module):
+    def __init__(self, patch_dims, hidden_dims=None, dropout_ratio=0.1):
+        super(MLP, self).__init__()
+        if not hidden_dims:
+            hidden_dims = patch_dims * 4
+        self.fc1 = nn.Linear(in_features=patch_dims, out_features=hidden_dims)
+        self.gelu = nn.GELU()
+        self.dropout = nn.Dropout(p=dropout_ratio)
+        self.fc2 = nn.Linear(in_features=hidden_dims, out_features=patch_dims)
+
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.gelu(x)
+        x = self.dropout(x)
+        x = self.fc2(x)
+        x = self.dropout(x)
+        return x
+
+
+
 class VIT_Encoder(nn.Module):
     def __init__(self, patch_dims):
         super(VIT_Encoder, self).__init__()
         self.ln1 = nn.LayerNorm(normalized_shape=patch_dims)
-        self.multi_head_attn = MultiHeadAttn(patch_dims, num_heads=16, dropout_ratio=0.1)
-        # self.ln2 = nn.LayerNorm(normalized_shape=patch_dims)
-        # self.mlp = MLP()
+        self.multi_head_attn = MultiHeadAttn(patch_dims, num_heads=16)
+        self.ln2 = nn.LayerNorm(normalized_shape=patch_dims)
+        self.mlp = MLP(patch_dims=patch_dims)
 
     def forward(self, x):
         residual = x
         x = self.ln1(x)
         x = self.multi_head_attn(x)
         x = residual + x
-        # residual = x
-        # x = self.mlp(x)
-        # x = residual + x
+        residual = x
+        x = self.ln2(x)
+        x = self.mlp(x)
+        x = residual + x
         return x
 
 
