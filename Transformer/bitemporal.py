@@ -7,7 +7,7 @@
 
 import torch
 import torch.nn as nn
-from models.siamese_resnet import SiameseResnet
+from Transformer.siamese_resnet import SiameseResnet
 
 
 class Encoder(nn.Module):
