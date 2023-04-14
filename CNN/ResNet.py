@@ -49,9 +49,9 @@ class BasicBlock(nn.Module):
         return x
 
 
-class BottleNeck(nn.Module):
+class BottleBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1, downsample=None):
-        super(BottleNeck, self).__init__()
+        super(BottleBlock, self).__init__()
         self.downsample = downsample
         self.main_path = nn.Sequential(
             ConvBN(in_channels=in_channels, out_channels=out_channels // 4, kernel_size=1, stride=1, padding=0),
@@ -93,7 +93,7 @@ class ResNet(nn.Module):
 
     def get_stage(self, first_channels, block_num, stride=1):
         if self.block_style == 'BottleBlock':
-            self.Block = BottleNeck
+            self.Block = BottleBlock
             self.out_channels = first_channels * 4
         elif self.block_style == 'BasicBlock':
             self.Block = BasicBlock
